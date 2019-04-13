@@ -1,5 +1,6 @@
 #import "RCTBarcode.h"
 #import "RCTBarcodeManager.h"
+#import <AVFoundation/AVFoundation.h>
 
 @interface RCTBarcodeManager ()
 
@@ -32,8 +33,8 @@ RCT_CUSTOM_VIEW_PROPERTY(barCodeTypes, NSArray, RCTBarcode) {
     self.session = [[AVCaptureSession alloc]init];
 #if !(TARGET_IPHONE_SIMULATOR)
     self.previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:self.session];
-//    self.previewLayer.needsDisplayOnBoundsChange = YES;
-    #endif
+    //    self.previewLayer.needsDisplayOnBoundsChange = YES;
+#endif
     
     if(!self.barcode){
         self.barcode = [[RCTBarcode alloc] initWithManager:self];
@@ -59,11 +60,11 @@ RCT_CUSTOM_VIEW_PROPERTY(barCodeTypes, NSArray, RCTBarcode) {
 
 - (void)initializeCaptureSessionInput:(NSString *)type {
     dispatch_async(self.sessionQueue, ^{
-    
+        
         [self.session beginConfiguration];
         
         NSError *error = nil;
-
+        
         AVCaptureDevice *captureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
         
         if (captureDevice == nil) {
@@ -77,7 +78,7 @@ RCT_CUSTOM_VIEW_PROPERTY(barCodeTypes, NSArray, RCTBarcode) {
         }
         
         [self.session removeInput:self.videoCaptureDeviceInput];
-
+        
         if ([self.session canAddInput:captureDeviceInput]) {
             [self.session addInput:captureDeviceInput];
             self.videoCaptureDeviceInput = captureDeviceInput;
@@ -87,18 +88,23 @@ RCT_CUSTOM_VIEW_PROPERTY(barCodeTypes, NSArray, RCTBarcode) {
 }
 
 RCT_EXPORT_METHOD(startSession) {
-    #if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR
     return;
-    #endif
+#endif
     dispatch_async(self.sessionQueue, ^{
         if(self.metadataOutput == nil) {
             AVCaptureMetadataOutput *metadataOutput = [[AVCaptureMetadataOutput alloc] init];
             self.metadataOutput = metadataOutput;
-        
+            
             if ([self.session canAddOutput:self.metadataOutput]) {
                 [self.metadataOutput setMetadataObjectsDelegate:self queue:self.sessionQueue];
                 [self.session addOutput:self.metadataOutput];
-                [self.metadataOutput setMetadataObjectTypes:self.barCodeTypes];
+                //                [self.metadataOutput setMetadataObjectTypes:self.barCodeTypes];
+                self.metadataOutput.metadataObjectTypes = @[AVMetadataObjectTypeQRCode,
+                                                            AVMetadataObjectTypeEAN13Code,
+                                                            @"org.iso.DataMatrix",
+                                                            AVMetadataObjectTypeEAN8Code,
+                                                            AVMetadataObjectTypeCode128Code];
             }
         }
         
@@ -111,13 +117,13 @@ RCT_EXPORT_METHOD(startSession) {
 }
 
 RCT_EXPORT_METHOD(stopSession) {
-    #if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR
     return;
-    #endif
+#endif
     dispatch_async(self.sessionQueue, ^{
         [self.session commitConfiguration];
         [self.session stopRunning];
-
+        
         //设置大时刻来模拟暂停效果
         [self.barcode.scanLineTimer setFireDate:[NSDate distantFuture]];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0),
@@ -125,7 +131,7 @@ RCT_EXPORT_METHOD(stopSession) {
                        ^{
                            [self.barcode.scanLine.layer removeAllAnimations];
                        });
-
+        
     });
 }
 
@@ -136,7 +142,7 @@ RCT_EXPORT_METHOD(startFlash) {
     }
     // Acquire a reference to the device
     AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-
+    
     // Configure the flashlight to be on
     [device lockForConfiguration:nil];
     [device setTorchMode:AVCaptureTorchModeOn];
@@ -151,7 +157,7 @@ RCT_EXPORT_METHOD(stopFlash) {
     }
     // Acquire a reference to the device
     AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-
+    
     // Configure the flashlight to be off
     [device lockForConfiguration:nil];
     [device setTorchMode:AVCaptureTorchModeOff];
@@ -160,9 +166,9 @@ RCT_EXPORT_METHOD(stopFlash) {
 }
 
 - (void)endSession {
-    #if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR
     return;
-    #endif
+#endif
     dispatch_async(self.sessionQueue, ^{
         self.barcode = nil;
         [self.previewLayer removeFromSuperlayer];
@@ -173,7 +179,7 @@ RCT_EXPORT_METHOD(stopFlash) {
         for(AVCaptureInput *input in self.session.inputs) {
             [self.session removeInput:input];
         }
-
+        
         for(AVCaptureOutput *output in self.session.outputs) {
             [self.session removeOutput:output];
         }
@@ -191,11 +197,11 @@ RCT_EXPORT_METHOD(stopFlash) {
                 
                 AudioServicesPlaySystemSound(self.beep_sound_id);
                 self.barcode.onBarCodeRead(@{
-                                              @"data": @{
-                                                        @"type": metadata.type,
-                                                        @"code": metadata.stringValue,
-                                              },
-                                            });
+                                             @"data": @{
+                                                     @"type": metadata.type,
+                                                     @"code": metadata.stringValue,
+                                                     },
+                                             });
             }
         }
     }
@@ -208,7 +214,7 @@ RCT_EXPORT_METHOD(stopFlash) {
 - (NSDictionary *)constantsToExport
 {
     return @{
-                @"barCodeTypes": @{
+             @"barCodeTypes": @{
                      @"upce": AVMetadataObjectTypeUPCECode,
                      @"code39": AVMetadataObjectTypeCode39Code,
                      @"code39mod43": AVMetadataObjectTypeCode39Mod43Code,
@@ -219,17 +225,18 @@ RCT_EXPORT_METHOD(stopFlash) {
                      @"pdf417": AVMetadataObjectTypePDF417Code,
                      @"qr": AVMetadataObjectTypeQRCode,
                      @"aztec": AVMetadataObjectTypeAztecCode
-                     #ifdef AVMetadataObjectTypeInterleaved2of5Code
+#ifdef AVMetadataObjectTypeInterleaved2of5Code
                      ,@"interleaved2of5": AVMetadataObjectTypeInterleaved2of5Code
-                     # endif
-                     #ifdef AVMetadataObjectTypeITF14Code
+# endif
+#ifdef AVMetadataObjectTypeITF14Code
                      ,@"itf14": AVMetadataObjectTypeITF14Code
-                     # endif
-                     #ifdef AVMetadataObjectTypeDataMatrixCode
-                     ,@"datamatrix": AVMetadataObjectTypeDataMatrixCode
-                     # endif
-                }
-            };
+# endif
+                     //                     #ifdef AVMetadataObjectTypeDataMatrixCode
+                     //                     ,@"datamatrix": AVMetadataObjectTypeDataMatrixCode
+                     ,@"datamatrix": @"org.iso.DataMatrix"
+                     //                     # endif
+                     }
+             };
 }
 
 // 检查设备是否有手电筒
